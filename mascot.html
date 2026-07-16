@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Vedika 2D Mascot</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap');
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: 'Outfit', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .mascot-container {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            cursor: grab;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Mic button below the mascot */
+        .mic-button {
+            position: absolute;
+            bottom: -38px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, 0.92);
+            border: 2px solid rgba(56, 189, 248, 0.5);
+            color: #38bdf8;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 20;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+        }
+
+        .mic-button:hover {
+            background: rgba(56, 189, 248, 0.2);
+            border-color: #38bdf8;
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+            transform: translateX(-50%) scale(1.12);
+        }
+
+        .mic-button.listening {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #ef4444;
+            color: #ef4444;
+            animation: pulse-mic 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse-mic {
+
+            0%,
+            100% {
+                box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+                transform: translateX(-50%) scale(1);
+            }
+
+            50% {
+                box-shadow: 0 0 28px rgba(239, 68, 68, 0.8);
+                transform: translateX(-50%) scale(1.15);
+            }
+        }
+
+        .mascot-container:active {
+            cursor: grabbing;
+        }
+
+        /* Particles Container */
+        .particles-container {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .particle {
+            position: absolute;
+            font-weight: bold;
+            font-size: 14px;
+            opacity: 0;
+            animation: rise-fade 1.5s ease-out forwards;
+        }
+
+        @keyframes rise-fade {
+            0% {
+                transform: translate(0, 0) scale(0.5);
+                opacity: 0;
+            }
+
+            20% {
+                opacity: 1;
+            }
+
+            100% {
+                transform: translate(var(--tx), var(--ty)) scale(1.1);
+                opacity: 0;
+            }
+        }
+
+        /* Speech Bubble Style */
+        .speech-bubble {
+            position: absolute;
+            top: 5px;
+            left: 50%;
+            transform: translateX(-50%) scale(0.8);
+            transform-origin: bottom center;
+            background: rgba(15, 23, 42, 0.9);
+            border: 1.5px solid rgba(56, 189, 248, 0.5);
+            border-radius: 14px;
+            color: #f1f5f9;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 500;
+            line-height: 1.4;
+            text-align: center;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            max-width: 230px;
+            min-width: 170px;
+            z-index: 10;
+        }
+
+        .speech-bubble.visible {
+            opacity: 1;
+            transform: translateX(-50%) scale(1);
+        }
+
+        .speech-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 8px 8px 0;
+            border-style: solid;
+            border-color: rgba(15, 23, 42, 0.9) transparent;
+            display: block;
+            width: 0;
+        }
+
+        /* SVG Element styling */
+        #mascot-svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            z-index: 2;
+        }
+
+        /* Default Float Animation (Idle) */
+        #astronaut {
+            transform-origin: 150px 160px;
+            transition: transform 0.4s ease-in-out;
+        }
+
+        .state-idle #astronaut {
+            animation: float 3.5s ease-in-out infinite;
+        }
+
+        .state-idle #shadow {
+            animation: shadow-scale 3.5s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+
+            100% {
+                transform: translateY(0px);
+            }
+        }
+
+        @keyframes shadow-scale {
+            0% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+
+            50% {
+                transform: scale(0.85);
+                opacity: 0.4;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+        }
+
+        /* Thinking State Animation */
+        .state-thinking #astronaut {
+            animation: thinking-bob 2.8s ease-in-out infinite;
+        }
+
+        @keyframes thinking-bob {
+
+            0%,
+            100% {
+                transform: translateY(0px) rotate(0deg);
+            }
+
+            50% {
+                transform: translateY(-4px) rotate(3deg);
+            }
+        }
+
+        /* Dancing State Animation */
+        .state-dance #astronaut {
+            animation: dancing 0.7s ease-in-out infinite;
+        }
+
+        @keyframes dancing {
+
+            0%,
+            100% {
+                transform: translateY(0) rotate(0deg) scale(1);
+            }
+
+            25% {
+                transform: translateY(-8px) rotate(-6deg) scale(1.03);
+            }
+
+            75% {
+                transform: translateY(-8px) rotate(6deg) scale(1.03);
+            }
+        }
+
+        .state-dance #shadow {
+            animation: dancing-shadow 0.7s ease-in-out infinite;
+        }
+
+        @keyframes dancing-shadow {
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+
+            50% {
+                transform: scale(0.8);
+                opacity: 0.3;
+            }
+        }
+
+        /* Sad / Error State */
+        .state-sad #astronaut {
+            transform: translateY(6px) rotate(-4deg);
+        }
+
+        .state-sad #shadow {
+            transform: scale(0.95);
+            opacity: 0.6;
+        }
+
+        /* Visor Eyes Transitions */
+        #visor-highlights {
+            transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .state-thinking #visor-highlights {
+            transform: translate(-3px, -5px);
+        }
+
+        .state-sad #visor-highlights {
+            transform: translate(-1px, 5px);
+        }
+
+        /* Right Arm Waving on Hover (Only in Idle/Dance) */
+        .right-arm {
+            transform-origin: 176px 158px;
+            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .state-idle .mascot-container:hover .right-arm,
+        .state-dance .mascot-container:hover .right-arm {
+            animation: wave 1.2s ease-in-out infinite;
+        }
+
+        @keyframes wave {
+
+            0%,
+            100% {
+                transform: rotate(0deg);
+            }
+
+            25% {
+                transform: rotate(45deg);
+            }
+
+            75% {
+                transform: rotate(-10deg);
+            }
+        }
+
+        /* Spin Animation on Click */
+        .spin-effect {
+            animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: translateY(0) rotate(0deg);
+            }
+
+            100% {
+                transform: translateY(0) rotate(360deg);
+            }
+        }
+
+        /* Chest Button Glowing states */
+        #chest-button {
+            transition: fill 0.3s, filter 0.3s;
+        }
+
+        .state-idle #chest-button {
+            animation: pulse-glow-blue 2s infinite ease-in-out;
+        }
+
+        .state-thinking #chest-button {
+            animation: pulse-glow-amber 1.5s infinite ease-in-out;
+        }
+
+        .state-dance #chest-button {
+            animation: pulse-glow-rainbow 1s infinite linear;
+        }
+
+        .state-sad #chest-button {
+            fill: #ef4444;
+            filter: drop-shadow(0 0 2px #ef4444);
+        }
+
+        @keyframes pulse-glow-blue {
+
+            0%,
+            100% {
+                fill: #0066ff;
+                filter: drop-shadow(0 0 1px #0066ff);
+            }
+
+            50% {
+                fill: #38bdf8;
+                filter: drop-shadow(0 0 4px #38bdf8);
+            }
+        }
+
+        @keyframes pulse-glow-amber {
+
+            0%,
+            100% {
+                fill: #f59e0b;
+                filter: drop-shadow(0 0 1px #f59e0b);
+            }
+
+            50% {
+                fill: #fbbf24;
+                filter: drop-shadow(0 0 4px #fbbf24);
+            }
+        }
+
+        @keyframes pulse-glow-rainbow {
+            0% {
+                fill: #a855f7;
+            }
+
+            33% {
+                fill: #22c55e;
+            }
+
+            66% {
+                fill: #eab308;
+            }
+
+            100% {
+                fill: #a855f7;
+            }
+        }
+    </style>
+</head>
+
+<body class="state-idle">
+
+    <div class="mascot-container" id="container">
+        <!-- Background Particles -->
+        <div class="particles-container" id="particles"></div>
+
+        <div class="speech-bubble" id="speech-bubble">
+            Hello, I'm Vedika!
+        </div>
+
+        <svg id="mascot-svg" viewBox="0 0 300 300">
+            <!-- Shadow -->
+            <ellipse id="shadow" cx="150" cy="262" rx="35" ry="5.5" fill="rgba(0, 0, 0, 0.25)" />
+
+            <!-- Entire Astronaut Group -->
+            <g id="astronaut">
+                <!-- Backpack (Oxygen Tank) -->
+                <rect x="108" y="140" width="84" height="65" rx="15" fill="#ffffff" stroke="#1d1d1f" stroke-width="4.5"
+                    stroke-linejoin="round" />
+
+                <!-- Legs & Boots -->
+                <!-- Left Leg -->
+                <g id="left-leg">
+                    <path
+                        d="M 125 198 L 125 228 C 125 234, 116 235, 116 242 C 116 246, 146 246, 146 242 C 146 235, 143 228, 143 198 Z"
+                        fill="#ffffff" stroke="#1d1d1f" stroke-width="4.5" stroke-linejoin="round" />
+                    <path d="M 123 228 Q 133 231 143 228" fill="none" stroke="#1d1d1f" stroke-width="4.5"
+                        stroke-linecap="round" />
+                </g>
+
+                <!-- Right Leg -->
+                <g id="right-leg">
+                    <path
+                        d="M 175 198 L 175 228 C 175 234, 184 235, 184 242 C 184 246, 154 246, 154 242 C 154 235, 157 228, 157 198 Z"
+                        fill="#ffffff" stroke="#1d1d1f" stroke-width="4.5" stroke-linejoin="round" />
+                    <path d="M 157 228 Q 167 231 177 228" fill="none" stroke="#1d1d1f" stroke-width="4.5"
+                        stroke-linecap="round" />
+                </g>
+
+                <!-- Torso (Body Suit) -->
+                <path
+                    d="M 120 148 C 108 148, 108 200, 122 205 C 132 208, 168 208, 178 205 C 192 200, 192 148, 180 148 Z"
+                    fill="#ffffff" stroke="#1d1d1f" stroke-width="4.5" stroke-linejoin="round" />
+
+                <!-- Collar Line -->
+                <path d="M 125 147 Q 150 153 175 147" fill="none" stroke="#1d1d1f" stroke-width="4.5"
+                    stroke-linecap="round" />
+
+                <!-- Left Arm -->
+                <path d="M 120 150 C 97 150, 95 182, 99 196 C 102 203, 114 203, 118 196 C 122 188, 124 170, 124 158 Z"
+                    fill="#ffffff" stroke="#1d1d1f" stroke-width="4.5" stroke-linejoin="round" />
+
+                <!-- Right Arm (Animatable) -->
+                <path class="right-arm"
+                    d="M 180 150 C 203 150, 205 182, 201 196 C 198 203, 186 203, 182 196 C 178 188, 176 170, 176 158 Z"
+                    fill="#ffffff" stroke="#1d1d1f" stroke-width="4.5" stroke-linejoin="round" />
+
+                <!-- Helmet Ears -->
+                <rect x="94" y="90" width="13" height="30" rx="6.5" fill="#ffffff" stroke="#1d1d1f" stroke-width="4.5"
+                    stroke-linejoin="round" />
+                <rect x="193" y="90" width="13" height="30" rx="6.5" fill="#ffffff" stroke="#1d1d1f" stroke-width="4.5"
+                    stroke-linejoin="round" />
+
+                <!-- Helmet Outer Frame -->
+                <circle cx="150" cy="105" r="48" fill="#ffffff" stroke="#1d1d1f" stroke-width="5"
+                    stroke-linejoin="round" />
+
+                <!-- Visor Inner Screen -->
+                <ellipse cx="150" cy="107" rx="39" ry="34" fill="#0b0c10" stroke="#1d1d1f" stroke-width="4.5"
+                    stroke-linejoin="round" />
+
+                <!-- Visor Highlights / Reflections -->
+                <g id="visor-highlights">
+                    <path d="M 120 98 A 30 25 0 0 1 155 85 A 35 30 0 0 0 120 108 Z" fill="#ffffff" opacity="0.85" />
+                    <circle cx="176" cy="98" r="5.5" fill="#ffffff" />
+                    <circle cx="172" cy="112" r="3" fill="#ffffff" />
+                </g>
+
+                <!-- Chest Control Panel -->
+                <rect x="130" y="156" width="40" height="24" rx="5" fill="#f1f5f9" stroke="#1d1d1f" stroke-width="4" />
+                <path d="M 144 156 L 144 180" stroke="#1d1d1f" stroke-width="2.5" stroke-linecap="round" />
+                <path d="M 130 166 L 144 166" stroke="#1d1d1f" stroke-width="2.5" stroke-linecap="round" />
+                <circle id="chest-button" cx="158" cy="168" r="4" fill="#0066ff" stroke="#1d1d1f" stroke-width="2" />
+
+                <!-- Belt & Belt Loops -->
+                <rect x="122" y="188" width="56" height="8" rx="4" fill="#ffffff" stroke="#1d1d1f" stroke-width="4" />
+                <rect x="119" y="186" width="6" height="12" rx="2" fill="#ffffff" stroke="#1d1d1f" stroke-width="2.5" />
+                <rect x="175" y="186" width="6" height="12" rx="2" fill="#ffffff" stroke="#1d1d1f" stroke-width="2.5" />
+            </g>
+        </svg>
+    </div>
+
+    <script>
+        const speechBubble = document.getElementById('speech-bubble');
+        const astronaut = document.getElementById('astronaut');
+        const container = document.getElementById('container');
+        const particlesContainer = document.getElementById('particles');
+
+        const quotes = {
+            idle: [
+                "Hello there! Ready to build something awesome?",
+                "Need a break? Remember to drink some water! 💧",
+                "Keep going, you're doing great! 🚀",
+                "I'm keeping an eye on your desktop! 👀",
+                "Houston, we have no problems here!",
+                "Have you stretched your shoulders recently? 🧘‍♂️",
+                "Let's write some beautiful code today!"
+            ],
+            thinking: [
+                "Analyzing user progress...",
+                "Searching local memory tree...",
+                "Formulating next learning suggestion...",
+                "Calculating personalized roadmap...",
+                "Let me think about how to explain this best..."
+            ],
+            dance: [
+                "Woohoo! You completed a task! 🎉",
+                "Amazing job on that quiz score! 🌟",
+                "Academic gains! Let's celebrate!",
+                "Keep up the momentum! You're crushing it!"
+            ],
+            sad: [
+                "Oh no, got an error? Don't worry, we can debug together! 🔧",
+                "Errors are just proof that you are trying. Let's solve it!",
+                "A tiny hiccup! Need a hint to get past this?",
+                "Take a deep breath. Let's look at the logs together."
+            ]
+        };
+
+        let bubbleTimeout;
+        let isSpinning = false;
+        let particleInterval;
+
+        function setMascotState(state) {
+            const body = document.body;
+            body.className = ''; // Reset
+
+            // Validate state
+            if (['idle', 'thinking', 'dance', 'sad'].includes(state)) {
+                body.classList.add('state-' + state);
+            } else {
+                body.classList.add('state-idle');
+            }
+
+            // Manage particles based on state
+            clearInterval(particleInterval);
+            particlesContainer.innerHTML = '';
+
+            if (state === 'dance') {
+                particleInterval = setInterval(() => spawnParticle('⭐', '#38bdf8'), 200);
+            } else if (state === 'thinking') {
+                particleInterval = setInterval(() => spawnParticle('?', '#f59e0b'), 400);
+            } else if (state === 'sad') {
+                particleInterval = setInterval(() => spawnParticle('💧', '#3b82f6'), 500);
+            }
+        }
+
+        function spawnParticle(symbol, color) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.textContent = symbol;
+            p.style.color = color;
+            p.style.left = (120 + Math.random() * 60) + 'px';
+            p.style.top = (120 + Math.random() * 60) + 'px';
+
+            // Random direction
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 50 + Math.random() * 80;
+            const tx = Math.cos(angle) * dist;
+            const ty = Math.sin(angle) * dist - 20; // Float upwards slightly
+
+            p.style.setProperty('--tx', tx + 'px');
+            p.style.setProperty('--ty', ty + 'px');
+
+            particlesContainer.appendChild(p);
+            setTimeout(() => p.remove(), 1500);
+        }
+
+        function showQuote(customText = null) {
+            let quoteText = customText;
+            if (!quoteText) {
+                // Find active state from class list
+                let activeState = 'idle';
+                if (document.body.classList.contains('state-dance')) activeState = 'dance';
+                else if (document.body.classList.contains('state-thinking')) activeState = 'thinking';
+                else if (document.body.classList.contains('state-sad')) activeState = 'sad';
+
+                const list = quotes[activeState] || quotes.idle;
+                quoteText = list[Math.floor(Math.random() * list.length)];
+            }
+
+            speechBubble.textContent = quoteText;
+            speechBubble.classList.add('visible');
+
+            clearTimeout(bubbleTimeout);
+            bubbleTimeout = setTimeout(() => {
+                speechBubble.classList.remove('visible');
+            }, 5000);
+        }
+
+        // Click interaction
+        container.addEventListener('click', (e) => {
+            if (isSpinning) return;
+
+            // Trigger Spin animation
+            isSpinning = true;
+            astronaut.classList.add('spin-effect');
+
+            showQuote();
+
+            setTimeout(() => {
+                astronaut.classList.remove('spin-effect');
+                isSpinning = false;
+            }, 800);
+        });
+
+        // Expose control functions to Python shell
+        window.setMascotState = setMascotState;
+        window.showSpeechBubble = showQuote;
+
+        // Initialize state
+        setMascotState('idle');
+
+        // Initial welcome quote
+        setTimeout(() => {
+            showQuote("Hi! I'm Vedika, your personalized desktop companion. Let's learn!");
+        }, 1000);
+    </script>
+</body>
+
+</html>

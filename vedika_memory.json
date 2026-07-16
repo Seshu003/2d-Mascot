@@ -1,0 +1,26 @@
+{
+  "email": "student@example.com",
+  "current_progress": {
+    "m1": "l2"
+  },
+  "quizzes": [],
+  "assignments": [],
+  "chats": [
+    {
+      "user": "Can you help me with loops?",
+      "companion": "Offline: I couldn't connect to the AI Tutor server on port 3000. Make sure it is running! (Error: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>)",
+      "timestamp": 1784208297.1461961
+    }
+  ],
+  "recent_activities": [
+    {
+      "activity_type": "progress",
+      "data": {
+        "module_id": "m1",
+        "lesson_id": "l2",
+        "lesson_title": "Variables & Data Types"
+      },
+      "timestamp": 1784208271.0477245
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# PyInstaller build artifacts (these are too large for GitHub)
+build/
+dist/
+*.spec
+*.pkg
+*.pyz
+
+# Local memory file (user-specific, don't share)
+vedika_memory.json
+
+# Icon intermediate files
+*.bmp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
