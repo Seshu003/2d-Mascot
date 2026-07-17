@@ -188,6 +188,7 @@ Vedika pushes events automatically whenever her state changes. Your LMS just nee
 | `chat` | `userId, state, userMessage, reply` | Chat completed |
 | `activity` | `activityType, state, speech, userId` | Activity processed |
 | `sleeping` | — | Mascot went to sleep |
+| `openAITutor`| `tab: string, userId?: string` | Mascot triggered AI Tutor page opening & circular menu spin animation |
 
 ### Detecting if Vedika is running
 

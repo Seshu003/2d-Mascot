@@ -998,6 +998,16 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                     reply = f"Navigating to {page.replace('_', ' ')} for you! 🚀"
                     mascot_state = "dance"
                     actions.append({"type": "navigate_to_page", "params": {"page": page}})
+
+                    # If it's an AI Tutor route, signal the browser to activate
+                    # circular menu mode and spin to the target tab
+                    _AI_TUTOR_TABS = {"general-tutor", "coding-tutor", "code-puzzle", "vedika-ai"}
+                    if page in _AI_TUTOR_TABS:
+                        _ws_broadcaster.broadcast_json("openAITutor", tab=page, userId=email)
+                    else:
+                        _ws_broadcaster.broadcast_json(
+                            "navigate", page=page, userId=email
+                        )
                 elif result["type"] == "text":
                     reply = result["text"]
                     self._sig.change_state.emit("idle")

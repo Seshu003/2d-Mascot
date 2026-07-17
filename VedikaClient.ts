@@ -112,6 +112,7 @@ export interface VedikaWSEvent {
   reply?:        string;
   activityType?: string;
   speech?:       string;
+  tab?:          string; // Added for openAITutor events
 }
 
 // ─── Client ─────────────────────────────────────────────────────────────────
