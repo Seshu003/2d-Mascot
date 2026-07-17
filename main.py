@@ -586,6 +586,8 @@ class AppSignals(QObject):
     save_chat        = pyqtSignal(str, str)  # (user_msg, ai_reply)
     custom_animation = pyqtSignal(str)
     ws_broadcast     = pyqtSignal(str)       # raw JSON string → WebSocket clients
+    webapp_status    = pyqtSignal(bool)      # True = connected, False = disconnected
+    navigate_to_page = pyqtSignal(str)       # (page_name)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -607,8 +609,10 @@ class WebSocketBroadcaster:
         self._clients: list[socket.socket] = []
         self._lock   = Lock()
         self._server_sock: socket.socket | None = None
+        self.signals = None
 
-    def start(self):
+    def start(self, signals=None):
+        self.signals = signals
         Thread(target=self._serve, daemon=True).start()
 
     def _serve(self):
@@ -663,6 +667,10 @@ class WebSocketBroadcaster:
             with self._lock:
                 self._clients.append(sock)
             print(f"[WS] Client connected (total: {len(self._clients)})")
+
+            # Notify UI that browser webapp client connected
+            if self.signals:
+                self.signals.webapp_status.emit(True)
 
             # Keep alive — read frames to detect close
             while True:
@@ -1245,6 +1253,23 @@ class MascotView(QWebEngineView):
         if title == "__CMD__listen" and self.parent_widget:
             self.parent_widget.toggle_voice_listen()
             self.page().runJavaScript("document.title = 'Vedika 2D Mascot';")
+        elif title.startswith("__CMD__navigate:") and self.parent_widget:
+            page = title[len("__CMD__navigate:"):]
+            url = PAGE_URLS.get(page)
+            if not url:
+                sub_page_urls = {
+                    "general-tutor": "https://vyomantha-testing.vercel.app/vedika-ai/general-tutor",
+                    "coding-tutor":  "https://vyomantha-testing.vercel.app/vedika-ai/coding-tutor",
+                    "code-puzzle":   "https://vyomantha-testing.vercel.app/vedika-ai/code-puzzle",
+                    "physics-lab":   "https://vyomantha-testing.vercel.app/labs/physics",
+                    "chemistry-lab": "https://vyomantha-testing.vercel.app/labs/chemistry",
+                    "biology-lab":   "https://vyomantha-testing.vercel.app/labs/biology",
+                    "vedika-labs":   "https://vyomantha-testing.vercel.app/vedika-labs",
+                    "quizzes":       "https://vyomantha-testing.vercel.app/courses?tab=quizzes",
+                }
+                url = sub_page_urls.get(page, PAGE_URLS["dashboard"])
+            webbrowser.open(url)
+            self.page().runJavaScript("document.title = 'Vedika 2D Mascot';")
 
     def eventFilter(self, obj, event):
         if obj == self.focusProxy():
@@ -1383,6 +1408,10 @@ class MascotWindow(QWidget):
         self.signals.show_speech.connect(
             lambda t: _ws_broadcaster.broadcast_json("speech", text=t)
         )
+        self.signals.webapp_status.connect(
+            lambda connected: self.view.page().runJavaScript(f"setWebappConnected({ 'true' if connected else 'false' });")
+        )
+        self.signals.navigate_to_page.connect(self.navigate_to_page)
 
         # Voice
         self.voice = VoiceListener(self.tts)
@@ -1394,7 +1423,7 @@ class MascotWindow(QWidget):
         # HTTP server (port 7000)
         ServerThread(7000, self.signals).start()
         # WebSocket server (port 7001)
-        _ws_broadcaster.start()
+        _ws_broadcaster.start(self.signals)
 
     # ─── System tray ─────────────────────────────────────────
     def _init_tray(self):
@@ -1498,6 +1527,29 @@ class MascotWindow(QWidget):
         self.move(geo.width() - self.width() - 20,
                   geo.height() - self.height() - 20)
 
+    def navigate_to_page(self, page: str):
+        self._record_activity()
+        url = PAGE_URLS.get(page)
+        if not url:
+            sub_page_urls = {
+                "general-tutor": "https://vyomantha-testing.vercel.app/vedika-ai/general-tutor",
+                "coding-tutor":  "https://vyomantha-testing.vercel.app/vedika-ai/coding-tutor",
+                "code-puzzle":   "https://vyomantha-testing.vercel.app/vedika-ai/code-puzzle",
+                "physics-lab":   "https://vyomantha-testing.vercel.app/labs/physics",
+                "chemistry-lab": "https://vyomantha-testing.vercel.app/labs/chemistry",
+                "biology-lab":   "https://vyomantha-testing.vercel.app/labs/biology",
+                "vedika-labs":   "https://vyomantha-testing.vercel.app/vedika-labs",
+                "quizzes":       "https://vyomantha-testing.vercel.app/courses?tab=quizzes",
+            }
+            url = sub_page_urls.get(page, PAGE_URLS["dashboard"])
+
+        if _ws_broadcaster.client_count > 0:
+            # Browser webapp is connected -> execute circular spin animation on desktop companion
+            self.view.page().runJavaScript(f"triggerMascotSpinAndNavigate('{page}');")
+        else:
+            # Webapp not open/outside -> open URL immediately in default browser
+            webbrowser.open(url)
+
     # ─── Voice ────────────────────────────────────────────────
     def toggle_voice_listen(self):
         self._record_activity()
@@ -1542,10 +1594,29 @@ class MascotWindow(QWidget):
         lower = text.lower().strip()
 
         # ── Fast-path keyword → open URL ──
-        for keyword, url in KNOWN_URLS.items():
+        for keyword in KNOWN_URLS.keys():
             nav_words = ["open", "go to", "take me to", "show", "launch", "start"]
             if keyword in lower and any(w in lower for w in nav_words):
-                webbrowser.open(url)
+                # Resolve structural page identifier
+                page_map = {
+                    "ai tutor":    "dashboard",
+                    "tutor":       "dashboard",
+                    "tutotr":      "dashboard",
+                    "vyomantha":   "login",
+                    "website":     "login",
+                    "login":       "login",
+                    "dashboard":   "dashboard",
+                    "grades":      "grades",
+                    "assignments": "assignments",
+                    "profile":     "profile",
+                    "home":        "home",
+                    "physics":     "physics-lab",
+                    "chemistry":   "chemistry-lab",
+                    "biology":     "biology-lab",
+                    "progress":    "progress",
+                }
+                resolved_page = page_map.get(keyword, "dashboard")
+                self.signals.navigate_to_page.emit(resolved_page)
                 resp = f"Opening {keyword} for you! 🚀"
                 self._on_show_speech(resp)
                 self._on_change_state("dance")
@@ -1571,11 +1642,11 @@ class MascotWindow(QWidget):
                 fn   = result["name"]
                 args = result["args"]
                 if fn == "navigate_to_page":
-                    page  = args.get("page", "ai_tutor")
-                    url   = PAGE_URLS.get(page, PAGE_URLS["login"])
-                    webbrowser.open(url)
-                    label = page.replace("_", " ").title()
-                    reply = f"Opening {label} for you! 🚀"
+                    page  = args.get("page", "dashboard")
+                    if page == "ai_tutor":
+                        page = "dashboard"
+                    self.signals.navigate_to_page.emit(page)
+                    reply = f"Opening {page.replace('_', ' ').title()} for you! 🚀"
                     self.signals.change_state.emit("dance")
             elif result["type"] == "text":
                 reply = result["text"]
