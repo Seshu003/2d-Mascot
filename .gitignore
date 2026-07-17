@@ -24,3 +24,8 @@ desktop.ini
 # IDE
 .vscode/
 .idea/
+
+# Environment secrets
+.env
+.env.local
+

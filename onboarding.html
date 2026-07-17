@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Vedika – First Launch</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body, html {
+            width: 100%; height: 100%;
+            font-family: 'Outfit', sans-serif;
+            background: transparent;
+            overflow: hidden;
+            color: #f1f5f9;
+        }
+
+        /* ─── Glassmorphism card ─── */
+        .card {
+            width: 520px; height: 410px;
+            background: linear-gradient(135deg,
+                rgba(15, 23, 42, 0.97) 0%,
+                rgba(8, 25, 55, 0.97) 100%);
+            border: 1.5px solid rgba(56, 189, 248, 0.35);
+            border-radius: 28px;
+            box-shadow:
+                0 0 60px rgba(56, 189, 248, 0.12),
+                0 40px 80px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 32px 36px 28px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Subtle star background */
+        .card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                radial-gradient(1px 1px at 20% 15%, rgba(255,255,255,0.6) 0%, transparent 100%),
+                radial-gradient(1px 1px at 70% 25%, rgba(255,255,255,0.5) 0%, transparent 100%),
+                radial-gradient(1px 1px at 40% 60%, rgba(255,255,255,0.4) 0%, transparent 100%),
+                radial-gradient(1px 1px at 85% 75%, rgba(255,255,255,0.5) 0%, transparent 100%),
+                radial-gradient(1px 1px at 10% 80%, rgba(255,255,255,0.4) 0%, transparent 100%),
+                radial-gradient(2px 2px at 55% 10%, rgba(56,189,248,0.6) 0%, transparent 100%),
+                radial-gradient(2px 2px at 90% 50%, rgba(168,85,247,0.4) 0%, transparent 100%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Glow accent top */
+        .glow-ring {
+            position: absolute;
+            top: -80px; left: 50%;
+            transform: translateX(-50%);
+            width: 300px; height: 300px;
+            border-radius: 50%;
+            background: radial-gradient(circle,
+                rgba(56, 189, 248, 0.15) 0%,
+                transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* All content above pseudo-elements */
+        .content { position: relative; z-index: 1; width: 100%; display: contents; }
+
+        /* ─── Mascot SVG row ─── */
+        .mascot-row {
+            display: flex; align-items: center; gap: 18px; width: 100%; margin-bottom: 20px;
+        }
+
+        .mini-mascot {
+            width: 90px; height: 90px; flex-shrink: 0;
+            animation: float-onboard 3s ease-in-out infinite;
+        }
+
+        @keyframes float-onboard {
+            0%, 100% { transform: translateY(0); }
+            50%       { transform: translateY(-7px); }
+        }
+
+        .greeting {
+            flex: 1;
+        }
+
+        .greeting h1 {
+            font-size: 22px; font-weight: 700;
+            background: linear-gradient(90deg, #38bdf8, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.25;
+            margin-bottom: 6px;
+        }
+
+        .greeting p {
+            font-size: 13px; color: #94a3b8; line-height: 1.5;
+        }
+
+        /* ─── Divider ─── */
+        .divider {
+            width: 100%; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(56,189,248,0.35), transparent);
+            margin: 4px 0 18px;
+        }
+
+        /* ─── Form ─── */
+        .form { width: 100%; display: flex; flex-direction: column; gap: 18px; }
+
+        .field { display: flex; flex-direction: column; gap: 6px; }
+
+        .field label {
+            font-size: 12.5px; font-weight: 600;
+            color: #94a3b8; letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .field input {
+            width: 100%;
+            background: rgba(255,255,255,0.06);
+            border: 1.5px solid rgba(56, 189, 248, 0.25);
+            border-radius: 12px;
+            color: #f1f5f9;
+            font-family: 'Outfit', sans-serif;
+            font-size: 15px;
+            padding: 11px 16px;
+            outline: none;
+            transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+        }
+
+        .field input::placeholder { color: #475569; }
+        .field input:focus {
+            border-color: #38bdf8;
+            background: rgba(56, 189, 248, 0.08);
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+        }
+
+        /* ─── Row for Name + Age side-by-side ─── */
+        .row { display: grid; grid-template-columns: 1fr 100px; gap: 12px; }
+
+        /* ─── Error ─── */
+        .error-msg {
+            color: #ef4444; font-size: 12.5px; text-align: center;
+            min-height: 18px; transition: opacity 0.2s;
+        }
+
+        /* ─── Button ─── */
+        .btn-launch {
+            width: 100%; padding: 14px;
+            background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
+            border: none; border-radius: 14px;
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            font-size: 16px; font-weight: 700;
+            cursor: pointer;
+            letter-spacing: 0.03em;
+            position: relative; overflow: hidden;
+            transition: transform 0.15s, box-shadow 0.15s;
+            box-shadow: 0 4px 20px rgba(56, 189, 248, 0.3);
+            margin-top: 6px;
+        }
+
+        .btn-launch:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(56, 189, 248, 0.45);
+        }
+
+        .btn-launch:active { transform: translateY(0); }
+
+        /* ripple */
+        .btn-launch::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.12), transparent);
+            border-radius: inherit;
+        }
+
+        /* ─── Footer ─── */
+        .footer {
+            margin-top: 12px;
+            font-size: 11.5px;
+            color: #334155;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="glow-ring"></div>
+
+    <!-- Mascot + Greeting -->
+    <div class="mascot-row content">
+        <!-- Mini astronaut SVG -->
+        <svg class="mini-mascot" viewBox="0 0 300 300">
+            <g id="a">
+                <rect x="108" y="140" width="84" height="65" rx="15" fill="#fff" stroke="#1d1d1f" stroke-width="5"/>
+                <path d="M 125 198 L 125 228 C 125 234,116 235,116 242 C 116 246,146 246,146 242 C 146 235,143 228,143 198 Z"
+                      fill="#fff" stroke="#1d1d1f" stroke-width="5"/>
+                <path d="M 175 198 L 175 228 C 175 234,184 235,184 242 C 184 246,154 246,154 242 C 154 235,157 228,157 198 Z"
+                      fill="#fff" stroke="#1d1d1f" stroke-width="5"/>
+                <path d="M 120 148 C 108 148,108 200,122 205 C 132 208,168 208,178 205 C 192 200,192 148,180 148 Z"
+                      fill="#fff" stroke="#1d1d1f" stroke-width="5"/>
+                <path d="M 120 150 C 97 150,95 182,99 196 C 102 203,114 203,118 196 C 122 188,124 170,124 158 Z"
+                      fill="#fff" stroke="#1d1d1f" stroke-width="5"/>
+                <path d="M 180 150 C 203 150,205 182,201 196 C 198 203,186 203,182 196 C 178 188,176 170,176 158 Z"
+                      fill="#fff" stroke="#1d1d1f" stroke-width="5"/>
+                <rect x="94"  y="90" width="13" height="30" rx="6.5" fill="#fff" stroke="#1d1d1f" stroke-width="5"/>
+                <rect x="193" y="90" width="13" height="30" rx="6.5" fill="#fff" stroke="#1d1d1f" stroke-width="5"/>
+                <circle cx="150" cy="105" r="48" fill="#fff" stroke="#1d1d1f" stroke-width="5"/>
+                <ellipse cx="150" cy="107" rx="39" ry="34" fill="#0b0c10" stroke="#1d1d1f" stroke-width="4.5"/>
+                <path d="M 120 98 A 30 25 0 0 1 155 85 A 35 30 0 0 0 120 108 Z" fill="#fff" opacity="0.85"/>
+                <circle cx="176" cy="98"  r="5.5" fill="#fff"/>
+                <circle cx="172" cy="112" r="3"   fill="#fff"/>
+                <circle cx="158" cy="168" r="4" fill="#38bdf8" stroke="#1d1d1f" stroke-width="2"/>
+            </g>
+        </svg>
+
+        <div class="greeting">
+            <h1>Hi! I'm Vedika! 👋</h1>
+            <p>Your personal AI companion.<br>
+               Let me get to know you before we blast off! 🚀</p>
+        </div>
+    </div>
+
+    <div class="divider content"></div>
+
+    <!-- Form -->
+    <form class="form content" onsubmit="submitForm(event)">
+
+        <div class="row">
+            <div class="field">
+                <label>Your Name</label>
+                <input id="inp-name" type="text" placeholder="e.g. Priya"
+                       autocomplete="off" maxlength="50" required>
+            </div>
+            <div class="field">
+                <label>Age</label>
+                <input id="inp-age" type="number" placeholder="16"
+                       min="5" max="99" required>
+            </div>
+        </div>
+
+        <div class="error-msg" id="err-msg"></div>
+
+        <button type="submit" class="btn-launch">
+            🚀 &nbsp;Let's Blast Off!
+        </button>
+    </form>
+
+    <div class="footer content">Your data stays on this device. Vedika never sends your info anywhere.</div>
+</div>
+
+<script>
+    function submitForm(e) {
+        e.preventDefault();
+        const name   = document.getElementById('inp-name').value.trim();
+        const age    = parseInt(document.getElementById('inp-age').value, 10);
+        const errEl  = document.getElementById('err-msg');
+
+        // Validation
+        if (!name) {
+            errEl.textContent = 'Please enter your name! 😊';
+            document.getElementById('inp-name').focus();
+            return;
+        }
+        if (!age || age < 5 || age > 99) {
+            errEl.textContent = 'Please enter a valid age (5–99).';
+            document.getElementById('inp-age').focus();
+            return;
+        }
+        errEl.textContent = '';
+
+        // Send to Python via document.title trick
+        const data   = JSON.stringify({ name, age, apiKey: '' });
+        document.title = '__ONBOARD__' + encodeURIComponent(data);
+    }
+
+    // Auto-focus name input
+    document.getElementById('inp-name').focus();
+</script>
+
+</body>
+</html>
