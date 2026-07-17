@@ -314,6 +314,27 @@
         /* NO hover arm animations — both arms stay still */
         .right-arm { transform-origin: 176px 158px; }
 
+        /* ─── Custom Animations ─── */
+        @keyframes wave-arm {
+            0%, 100% { transform: rotate(0deg); }
+            25%, 65% { transform: rotate(-45deg); }
+            45%, 85% { transform: rotate(-15deg); }
+        }
+        .anim-wave .right-arm { animation: wave-arm 0.8s ease-in-out; }
+
+        @keyframes nod {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(6px); }
+        }
+        .anim-nod #astronaut { animation: nod 0.5s ease-in-out; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0) rotate(0deg); }
+            25% { transform: translateX(-5px) rotate(-2deg); }
+            75% { transform: translateX(5px) rotate(2deg); }
+        }
+        .anim-shake #astronaut { animation: shake 0.5s ease-in-out; }
+
         /* ─── Chest button glow ─── */
         #chest-button { transition: fill 0.3s, filter 0.3s; }
         .state-idle     #chest-button { animation: glow-blue   2s infinite ease-in-out; }
@@ -566,6 +587,36 @@
             document.title = '__CMD__listen';
         }
 
+        /* ── Trigger Custom Animation ── */
+        function triggerCustomAnimation(animName) {
+            const valid = ['wave', 'nod', 'shake'];
+            if (!valid.includes(animName)) return;
+
+            // Remove previous anim classes
+            container.classList.remove('anim-wave', 'anim-nod', 'anim-shake');
+            
+            // Force reflow to restart animation
+            void container.offsetWidth;
+
+            container.classList.add('anim-' + animName);
+
+            // Spawn particles matching animation
+            if (animName === 'wave') {
+                for (let i = 0; i < 4; i++) {
+                    setTimeout(() => spawnParticle('⭐', '#38bdf8'), i * 150);
+                }
+            } else if (animName === 'nod') {
+                spawnParticle('👍', '#22c55e');
+            } else if (animName === 'shake') {
+                spawnParticle('❓', '#f87171');
+            }
+
+            // Remove class after animation ends (e.g. 1000ms)
+            setTimeout(() => {
+                container.classList.remove('anim-' + animName);
+            }, 1000);
+        }
+
         /* ── Click on mascot body: just show a quote, NO spin ── */
         container.addEventListener('click', (e) => {
             if (micBtn.contains(e.target)) return;   // handled by button
@@ -574,10 +625,11 @@
         });
 
         /* ── Expose to Python ── */
-        window.setMascotState   = setMascotState;
-        window.showSpeechBubble = showSpeechBubble;
-        window.showQuote        = showQuote;
-        window.setListening     = setListening;
+        window.setMascotState         = setMascotState;
+        window.showSpeechBubble       = showSpeechBubble;
+        window.showQuote              = showQuote;
+        window.setListening           = setListening;
+        window.triggerCustomAnimation = triggerCustomAnimation;
 
         /* ── Init ── */
         setMascotState('idle');

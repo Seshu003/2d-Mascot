@@ -18,7 +18,7 @@
 
         /* ─── Glassmorphism card ─── */
         .card {
-            width: 520px; height: 410px;
+            width: 520px;
             background: linear-gradient(135deg,
                 rgba(15, 23, 42, 0.97) 0%,
                 rgba(8, 25, 55, 0.97) 100%);
@@ -30,7 +30,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 32px 36px 28px;
+            padding: 30px 36px 26px;
             position: relative;
             overflow: hidden;
         }
@@ -71,11 +71,11 @@
 
         /* ─── Mascot SVG row ─── */
         .mascot-row {
-            display: flex; align-items: center; gap: 18px; width: 100%; margin-bottom: 20px;
+            display: flex; align-items: center; gap: 18px; width: 100%; margin-bottom: 18px;
         }
 
         .mini-mascot {
-            width: 90px; height: 90px; flex-shrink: 0;
+            width: 88px; height: 88px; flex-shrink: 0;
             animation: float-onboard 3s ease-in-out infinite;
         }
 
@@ -84,38 +84,36 @@
             50%       { transform: translateY(-7px); }
         }
 
-        .greeting {
-            flex: 1;
-        }
+        .greeting { flex: 1; }
 
         .greeting h1 {
-            font-size: 22px; font-weight: 700;
+            font-size: 21px; font-weight: 700;
             background: linear-gradient(90deg, #38bdf8, #a855f7);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
             line-height: 1.25;
-            margin-bottom: 6px;
+            margin-bottom: 5px;
         }
 
         .greeting p {
-            font-size: 13px; color: #94a3b8; line-height: 1.5;
+            font-size: 12.5px; color: #94a3b8; line-height: 1.5;
         }
 
         /* ─── Divider ─── */
         .divider {
             width: 100%; height: 1px;
             background: linear-gradient(90deg, transparent, rgba(56,189,248,0.35), transparent);
-            margin: 4px 0 18px;
+            margin: 2px 0 16px;
         }
 
         /* ─── Form ─── */
-        .form { width: 100%; display: flex; flex-direction: column; gap: 18px; }
+        .form { width: 100%; display: flex; flex-direction: column; gap: 14px; }
 
-        .field { display: flex; flex-direction: column; gap: 6px; }
+        .field { display: flex; flex-direction: column; gap: 5px; }
 
         .field label {
-            font-size: 12.5px; font-weight: 600;
+            font-size: 12px; font-weight: 600;
             color: #94a3b8; letter-spacing: 0.04em;
             text-transform: uppercase;
         }
@@ -128,7 +126,7 @@
             color: #f1f5f9;
             font-family: 'Outfit', sans-serif;
             font-size: 15px;
-            padding: 11px 16px;
+            padding: 10px 15px;
             outline: none;
             transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
         }
@@ -139,40 +137,90 @@
             background: rgba(56, 189, 248, 0.08);
             box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
         }
+        .field input.shake {
+            animation: input-shake 0.35s ease;
+        }
+        @keyframes input-shake {
+            0%, 100% { transform: translateX(0); }
+            20%       { transform: translateX(-6px); }
+            40%       { transform: translateX(6px); }
+            60%       { transform: translateX(-4px); }
+            80%       { transform: translateX(4px); }
+        }
 
         /* ─── Row for Name + Age side-by-side ─── */
-        .row { display: grid; grid-template-columns: 1fr 100px; gap: 12px; }
+        .row { display: grid; grid-template-columns: 1fr 90px; gap: 12px; }
+
+        /* ─── Advanced API key toggle ─── */
+        .advanced-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            user-select: none;
+            transition: color 0.2s;
+        }
+        .advanced-toggle:hover { color: #38bdf8; }
+        .advanced-toggle .chevron {
+            display: inline-block;
+            transition: transform 0.25s ease;
+            font-size: 10px;
+        }
+        .advanced-toggle.open .chevron { transform: rotate(90deg); }
+
+        .advanced-section {
+            overflow: hidden;
+            max-height: 0;
+            transition: max-height 0.3s ease;
+        }
+        .advanced-section.open { max-height: 200px; }
+
+        .api-hint {
+            font-size: 11.5px;
+            color: #475569;
+            margin-top: 5px;
+        }
+        .api-hint a {
+            color: #38bdf8;
+            text-decoration: none;
+        }
+        .api-hint a:hover { text-decoration: underline; }
 
         /* ─── Error ─── */
         .error-msg {
-            color: #ef4444; font-size: 12.5px; text-align: center;
-            min-height: 18px; transition: opacity 0.2s;
+            color: #ef4444; font-size: 12px; text-align: center;
+            min-height: 16px; transition: opacity 0.2s;
         }
 
         /* ─── Button ─── */
         .btn-launch {
-            width: 100%; padding: 14px;
+            width: 100%; padding: 13px;
             background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
             border: none; border-radius: 14px;
             color: #fff;
             font-family: 'Outfit', sans-serif;
-            font-size: 16px; font-weight: 700;
+            font-size: 15px; font-weight: 700;
             cursor: pointer;
             letter-spacing: 0.03em;
             position: relative; overflow: hidden;
-            transition: transform 0.15s, box-shadow 0.15s;
+            transition: transform 0.15s, box-shadow 0.15s, opacity 0.2s;
             box-shadow: 0 4px 20px rgba(56, 189, 248, 0.3);
-            margin-top: 6px;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
         }
 
-        .btn-launch:hover {
+        .btn-launch:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 8px 32px rgba(56, 189, 248, 0.45);
         }
+        .btn-launch:active:not(:disabled) { transform: translateY(0); }
+        .btn-launch:disabled { opacity: 0.7; cursor: not-allowed; }
 
-        .btn-launch:active { transform: translateY(0); }
-
-        /* ripple */
+        /* ripple overlay */
         .btn-launch::after {
             content: '';
             position: absolute;
@@ -181,12 +229,39 @@
             border-radius: inherit;
         }
 
+        /* Spinner */
+        .spinner {
+            display: none;
+            width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.4);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .btn-launch.loading .spinner { display: block; }
+        .btn-launch.loading .btn-text { opacity: 0.7; }
+
         /* ─── Footer ─── */
         .footer {
-            margin-top: 12px;
-            font-size: 11.5px;
+            margin-top: 10px;
+            font-size: 11px;
             color: #334155;
             text-align: center;
+        }
+
+        /* ─── Step progress dots ─── */
+        .step-dots {
+            display: flex; gap: 6px; margin-bottom: 14px;
+        }
+        .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: rgba(56,189,248,0.25);
+            transition: background 0.3s, width 0.3s;
+        }
+        .dot.active {
+            background: #38bdf8;
+            width: 18px; border-radius: 3px;
         }
     </style>
 </head>
@@ -194,6 +269,12 @@
 
 <div class="card">
     <div class="glow-ring"></div>
+
+    <!-- Step dots -->
+    <div class="step-dots content">
+        <div class="dot active" id="dot1"></div>
+        <div class="dot" id="dot2"></div>
+    </div>
 
     <!-- Mascot + Greeting -->
     <div class="mascot-row content">
@@ -232,7 +313,7 @@
     <div class="divider content"></div>
 
     <!-- Form -->
-    <form class="form content" onsubmit="submitForm(event)">
+    <form class="form content" id="onboard-form" onsubmit="submitForm(event)">
 
         <div class="row">
             <div class="field">
@@ -247,10 +328,31 @@
             </div>
         </div>
 
+        <!-- Advanced: API Key (collapsible) -->
+        <div>
+            <div class="advanced-toggle" id="adv-toggle" onclick="toggleAdvanced()">
+                <span class="chevron">▶</span>
+                <span>Advanced — Gemini API Key</span>
+            </div>
+            <div class="advanced-section" id="adv-section">
+                <div class="field" style="margin-top:10px;">
+                    <label>Gemini API Key <span style="color:#475569;font-weight:400;text-transform:none">(optional)</span></label>
+                    <input id="inp-apikey" type="password" placeholder="AIza..."
+                           autocomplete="off" maxlength="100">
+                </div>
+                <p class="api-hint">
+                    Get a free key at
+                    <a href="#" onclick="openStudio(); return false;">aistudio.google.com</a>
+                    — enables on-device AI responses.
+                </p>
+            </div>
+        </div>
+
         <div class="error-msg" id="err-msg"></div>
 
-        <button type="submit" class="btn-launch">
-            🚀 &nbsp;Let's Blast Off!
+        <button type="submit" class="btn-launch" id="launch-btn">
+            <span class="spinner"></span>
+            <span class="btn-text">🚀 &nbsp;Let's Blast Off!</span>
         </button>
     </form>
 
@@ -258,28 +360,73 @@
 </div>
 
 <script>
+    let advOpen = false;
+
+    function toggleAdvanced() {
+        advOpen = !advOpen;
+        document.getElementById('adv-toggle').classList.toggle('open', advOpen);
+        document.getElementById('adv-section').classList.toggle('open', advOpen);
+        // Animate dot 2 to signal step 2 awareness
+        document.getElementById('dot2').classList.toggle('active', advOpen);
+        document.getElementById('dot1').classList.toggle('active', !advOpen);
+    }
+
+    function openStudio() {
+        // Signal Python to open browser
+        document.title = '__OPEN_URL__https://aistudio.google.com/app/apikey';
+        setTimeout(() => { document.title = 'Vedika – First Launch'; }, 500);
+    }
+
+    function shakeInput(el) {
+        el.classList.remove('shake');
+        void el.offsetWidth; // force reflow
+        el.classList.add('shake');
+        el.addEventListener('animationend', () => el.classList.remove('shake'), { once: true });
+    }
+
+    function setLoading(on) {
+        const btn = document.getElementById('launch-btn');
+        btn.disabled = on;
+        btn.classList.toggle('loading', on);
+        if (on) {
+            btn.querySelector('.btn-text').textContent = 'Launching…';
+        } else {
+            btn.querySelector('.btn-text').innerHTML = '🚀 &nbsp;Let\'s Blast Off!';
+        }
+    }
+
     function submitForm(e) {
         e.preventDefault();
-        const name   = document.getElementById('inp-name').value.trim();
-        const age    = parseInt(document.getElementById('inp-age').value, 10);
-        const errEl  = document.getElementById('err-msg');
+        const nameEl   = document.getElementById('inp-name');
+        const ageEl    = document.getElementById('inp-age');
+        const apiKeyEl = document.getElementById('inp-apikey');
+        const errEl    = document.getElementById('err-msg');
+
+        const name   = nameEl.value.trim();
+        const age    = parseInt(ageEl.value, 10);
+        const apiKey = apiKeyEl.value.trim();
 
         // Validation
         if (!name) {
             errEl.textContent = 'Please enter your name! 😊';
-            document.getElementById('inp-name').focus();
+            shakeInput(nameEl);
+            nameEl.focus();
             return;
         }
         if (!age || age < 5 || age > 99) {
             errEl.textContent = 'Please enter a valid age (5–99).';
-            document.getElementById('inp-age').focus();
+            shakeInput(ageEl);
+            ageEl.focus();
             return;
         }
         errEl.textContent = '';
+        setLoading(true);
 
-        // Send to Python via document.title trick
-        const data   = JSON.stringify({ name, age, apiKey: '' });
-        document.title = '__ONBOARD__' + encodeURIComponent(data);
+        // Brief delay for visual feedback before closing window
+        setTimeout(() => {
+            const data = JSON.stringify({ name, age, apiKey });
+            document.title = '__ONBOARD__' + encodeURIComponent(data);
+        }, 500);
     }
 
     // Auto-focus name input

@@ -4,13 +4,19 @@ import json
 import time
 import platform
 import webbrowser
+import struct
+import hashlib
+import base64
+import socket
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from threading import Thread
+from threading import Thread, Lock
 from PyQt5.QtCore import Qt, QUrl, pyqtSignal, QObject, QTimer, QEvent
 from PyQt5.QtWidgets import (QApplication, QWidget, QMenu, QDesktopWidget,
                              QVBoxLayout, QAction, QSystemTrayIcon)
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWebEngineWidgets import QWebEngineView
+import schema_validator
+import db as vdb
 
 APP_NAME   = "VedikaMascot"
 IS_WINDOWS = platform.system() == "Windows"
@@ -77,6 +83,21 @@ def get_memory_file_path():
 MEMORY_FILE = get_memory_file_path()
 CONFIG_FILE = os.path.join(get_data_dir(), "vedika_config.json")
 
+# ── Active user (set from LMS userId, falls back to DEFAULT_EMAIL) ──
+_current_user_email: str = vdb.DEFAULT_EMAIL
+_user_lock = Lock()
+
+def get_current_email() -> str:
+    with _user_lock:
+        return _current_user_email
+
+def set_current_email(email: str):
+    global _current_user_email
+    if email and email.strip():
+        with _user_lock:
+            _current_user_email = email.strip()
+            vdb.db_ensure_user(_current_user_email)
+
 
 # ═══════════════════════════════════════════════════════════════
 #   CONFIG  (Gemini API key + settings)
@@ -125,47 +146,19 @@ def save_config(cfg):
 
 
 # ═══════════════════════════════════════════════════════════════
-#   MEMORY
+#   MEMORY  (SQLite-backed, multi-user)
 # ═══════════════════════════════════════════════════════════════
 
-def _default_memory():
-    return {
-        "email": None,
-        "user_name": None,
-        "user_age": None,
-        "strengths": [],
-        "weaknesses": [],
-        "current_progress": {},
-        "quizzes": [],
-        "assignments": [],
-        "chats": [],
-        "recent_activities": [],
-        "total_sessions": 0,
-        "last_session_end": None,
-    }
+def load_memory(email: str = None) -> dict:
+    """Load memory for the given user (defaults to current active user)."""
+    return vdb.db_load_memory(email or get_current_email())
 
-def load_memory():
-    if not os.path.exists(MEMORY_FILE):
-        return _default_memory()
-    try:
-        with open(MEMORY_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            base = _default_memory()
-            base.update(data)
-            return base
-    except Exception:
-        return _default_memory()
+def save_memory(data: dict, email: str = None):
+    """Save profile + progress fields for the given user."""
+    vdb.db_save_memory(email or get_current_email(), data)
 
-def save_memory(data):
-    try:
-        with open(MEMORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        print(f"Memory save error: {e}")
-
-def needs_onboarding():
-    m = load_memory()
-    return not m.get("user_name") or not m.get("user_age")
+def needs_onboarding(email: str = None) -> bool:
+    return vdb.db_needs_onboarding(email or get_current_email())
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -245,6 +238,7 @@ def get_age_tone(age):
         return "professional, concise, adult vocabulary"
 
 def build_system_prompt(memory: dict, voice_mode: bool = False) -> str:
+    email     = memory.get("email") or get_current_email()
     name      = memory.get("user_name") or "Student"
     age       = memory.get("user_age")
     tone      = get_age_tone(age)
@@ -252,8 +246,10 @@ def build_system_prompt(memory: dict, voice_mode: bool = False) -> str:
     quizzes   = memory.get("quizzes", [])
     weaknesses = memory.get("weaknesses", [])
     strengths  = memory.get("strengths",  [])
-    difficulties = [q["topic"] for q in quizzes if q.get("score", 100) < 60]
-    quiz_str  = ", ".join(f"{q['topic']}: {q['score']}%" for q in quizzes[-5:]) or "None yet"
+    # Use structured DB query for weak topics for richer context
+    db_weak_topics = vdb.db_get_weak_topics(email)
+    difficulties = list(set([q["topic"] for q in quizzes if q.get("score", 100) < 60] + db_weak_topics))
+    quiz_str  = ", ".join(f"{q['topic']}: {q['score']}%" for q in quizzes[:5]) or "None yet"
     prog_str  = ", ".join(f"Module {m}: Lesson {l}" for m, l in progress.items()) or "Just starting"
 
     cfg = load_config()
@@ -351,7 +347,7 @@ def call_gemini_direct(system_prompt: str, user_message: str, api_key: str, use_
             config_kwargs["tools"] = [navigate_tool]
 
         response = client.models.generate_content(
-            model="gemini-3.5-flash",
+            model="gemini-2.0-flash",
             contents=user_message,
             config=types.GenerateContentConfig(**config_kwargs),
         )
@@ -580,11 +576,166 @@ class VoiceListener(QObject):
 # ═══════════════════════════════════════════════════════════════
 
 class AppSignals(QObject):
-    change_state    = pyqtSignal(str)
-    show_speech     = pyqtSignal(str)
-    speak_text      = pyqtSignal(str)
-    record_activity = pyqtSignal()       # reset sleep timer
-    save_chat       = pyqtSignal(str, str)  # (user_msg, ai_reply)
+    change_state     = pyqtSignal(str)
+    show_speech      = pyqtSignal(str)
+    speak_text       = pyqtSignal(str)
+    record_activity  = pyqtSignal()          # reset sleep timer
+    save_chat        = pyqtSignal(str, str)  # (user_msg, ai_reply)
+    custom_animation = pyqtSignal(str)
+    ws_broadcast     = pyqtSignal(str)       # raw JSON string → WebSocket clients
+
+
+# ═══════════════════════════════════════════════════════════════
+#   WEBSOCKET BROADCASTER  (port 7001, stdlib only)
+# ═══════════════════════════════════════════════════════════════
+
+class WebSocketBroadcaster:
+    """
+    Minimal RFC-6455 WebSocket server on port 7001.
+    Accepts connections from the Vyomantha LMS (or any browser).
+    Pushes JSON events whenever mascot state / speech changes.
+    No external libraries required — uses only Python stdlib.
+    """
+
+    _WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+    def __init__(self, port: int = 7001):
+        self.port    = port
+        self._clients: list[socket.socket] = []
+        self._lock   = Lock()
+        self._server_sock: socket.socket | None = None
+
+    def start(self):
+        Thread(target=self._serve, daemon=True).start()
+
+    def _serve(self):
+        try:
+            self._server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self._server_sock.bind(("127.0.0.1", self.port))
+            self._server_sock.listen(8)
+            print(f"Vedika WebSocket → ws://localhost:{self.port}")
+            while True:
+                try:
+                    client_sock, addr = self._server_sock.accept()
+                    Thread(target=self._handle_client, args=(client_sock,), daemon=True).start()
+                except Exception:
+                    break
+        except Exception as e:
+            print(f"[WS] Server error: {e}")
+
+    def _handle_client(self, sock: socket.socket):
+        try:
+            # Read HTTP upgrade request
+            data = b""
+            while b"\r\n\r\n" not in data:
+                chunk = sock.recv(1024)
+                if not chunk:
+                    return
+                data += chunk
+            headers_raw = data.split(b"\r\n\r\n")[0].decode("utf-8", errors="ignore")
+            headers = {}
+            for line in headers_raw.split("\r\n")[1:]:
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    headers[k.strip().lower()] = v.strip()
+
+            ws_key = headers.get("sec-websocket-key", "")
+            if not ws_key:
+                sock.close()
+                return
+
+            # Perform handshake
+            accept_key = base64.b64encode(
+                hashlib.sha1((ws_key + self._WS_MAGIC).encode()).digest()
+            ).decode()
+            response = (
+                "HTTP/1.1 101 Switching Protocols\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Accept: {accept_key}\r\n\r\n"
+            )
+            sock.sendall(response.encode())
+
+            with self._lock:
+                self._clients.append(sock)
+            print(f"[WS] Client connected (total: {len(self._clients)})")
+
+            # Keep alive — read frames to detect close
+            while True:
+                try:
+                    header = sock.recv(2)
+                    if len(header) < 2:
+                        break
+                    fin_opcode = header[0]
+                    mask_len   = header[1]
+                    opcode = fin_opcode & 0x0F
+                    if opcode == 0x8:  # close frame
+                        break
+                    payload_len = mask_len & 0x7F
+                    if payload_len == 126:
+                        sock.recv(2)
+                    elif payload_len == 127:
+                        sock.recv(8)
+                    masked = (mask_len & 0x80) != 0
+                    if masked:
+                        sock.recv(4)   # masking key
+                        if payload_len:
+                            sock.recv(payload_len)
+                    elif payload_len:
+                        sock.recv(payload_len)
+                except Exception:
+                    break
+        except Exception as e:
+            print(f"[WS] Client error: {e}")
+        finally:
+            with self._lock:
+                if sock in self._clients:
+                    self._clients.remove(sock)
+            try:
+                sock.close()
+            except Exception:
+                pass
+            print(f"[WS] Client disconnected (total: {len(self._clients)})")
+
+    def _encode_frame(self, payload: str) -> bytes:
+        data   = payload.encode("utf-8")
+        length = len(data)
+        if length <= 125:
+            header = struct.pack("BB", 0x81, length)
+        elif length <= 65535:
+            header = struct.pack("!BBH", 0x81, 126, length)
+        else:
+            header = struct.pack("!BBQ", 0x81, 127, length)
+        return header + data
+
+    def broadcast(self, payload: str):
+        """Send a JSON string to all connected WebSocket clients."""
+        frame = self._encode_frame(payload)
+        dead  = []
+        with self._lock:
+            for sock in self._clients:
+                try:
+                    sock.sendall(frame)
+                except Exception:
+                    dead.append(sock)
+            for sock in dead:
+                if sock in self._clients:
+                    self._clients.remove(sock)
+
+    def broadcast_json(self, event: str, **kwargs):
+        """Helper: build a JSON event dict and broadcast it."""
+        payload = json.dumps({"event": event, **kwargs})
+        self.broadcast(payload)
+
+    @property
+    def client_count(self) -> int:
+        with self._lock:
+            return len(self._clients)
+
+
+# Module-level broadcaster instance (shared across HTTP handler + Qt signals)
+_ws_broadcaster = WebSocketBroadcaster(port=7001)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -642,70 +793,104 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
     # ── /api/onboard ─────────────────────────────────────────
     def _handle_onboard(self):
         try:
-            req    = self._read_json()
-            memory = load_memory()
-            memory["user_name"] = req.get("name", "Student").strip() or "Student"
-            memory["user_age"]  = int(req.get("age", 16))
-            save_memory(memory)
+            req   = self._read_json()
+            email = req.get("userId") or get_current_email()
+            set_current_email(email)
+
+            name = (req.get("name") or "Student").strip() or "Student"
+            age  = int(req.get("age") or 16)
+            vdb.db_set_profile(email, name, age)
+
             cfg = load_config()
             if req.get("apiKey"):
                 cfg["gemini_api_key"] = req["apiKey"].strip()
                 save_config(cfg)
             self._sig.record_activity.emit()
-            self._send_json({"ok": True})
+            self._send_json({"ok": True, "user": email})
         except Exception as e:
             self._send_json({"error": str(e)}, 500)
 
     # ── /api/activity ─────────────────────────────────────────
     def _handle_activity(self):
         try:
-            req           = self._read_json()
-            email         = req.get("email")
-            activity_type = req.get("activity_type")
-            act_data      = req.get("data", {})
-            memory        = load_memory()
+            req = self._read_json()
+
+            # Schema Validation
+            is_valid, err_msg = schema_validator.validate_lms_context(req)
+            if not is_valid:
+                self._send_json({"error": f"Schema Validation Error: {err_msg}"}, 400)
+                return
+
+            # Resolve email / user identity
+            email = req.get("userId") or req.get("email")
             if email:
-                memory["email"] = email
-            memory["recent_activities"].append({
-                "activity_type": activity_type,
-                "data": act_data,
-                "timestamp": time.time(),
-            })
-            if len(memory["recent_activities"]) > 100:
-                memory["recent_activities"] = memory["recent_activities"][-100:]
+                set_current_email(email)
+            email = get_current_email()
+
+            # Map new format (action/contextData) to internal format
+            if "action" in req:
+                action   = req["action"]
+                ctx_data = req.get("contextData", {})
+
+                if action == "submit_quiz":
+                    activity_type = "quiz"
+                    act_data = {
+                        "topic": ctx_data.get("quizTopic", "Quiz"),
+                        "score": ctx_data.get("quizScore", 0)
+                    }
+                elif action == "compile_code":
+                    if ctx_data.get("errorMessage"):
+                        activity_type = "error"
+                        act_data = {"error": ctx_data.get("errorMessage")}
+                    else:
+                        activity_type = "compile_success"
+                        act_data = {}
+                elif action == "navigate":
+                    activity_type = "progress"
+                    act_data = {
+                        "module_id":    ctx_data.get("moduleId", "m1"),
+                        "lesson_id":    ctx_data.get("lessonId", "l1"),
+                        "lesson_title": ctx_data.get("lessonTitle", "Lesson")
+                    }
+                else:
+                    activity_type = action
+                    act_data = ctx_data
+            else:
+                activity_type = req.get("activity_type")
+                act_data      = req.get("data", {})
+
+            # ── Log activity to SQLite ──
+            vdb.db_log_activity(email, activity_type, act_data)
 
             state, speech = "idle", ""
 
             if activity_type == "progress":
-                mid = act_data.get("module_id")
-                lid = act_data.get("lesson_id")
+                mid   = act_data.get("module_id")
+                lid   = act_data.get("lesson_id")
+                title = act_data.get("lesson_title", "Lesson")
                 if mid and lid:
-                    memory["current_progress"][mid] = lid
+                    vdb.db_update_progress(email, mid, lid, title)
                 state  = "thinking"
-                speech = f"Moving on to {act_data.get('lesson_title', 'the next lesson')}! Great progress! 🚀"
+                speech = f"Moving on to {title}! Great progress! 🚀"
 
             elif activity_type == "quiz":
                 topic = act_data.get("topic", "Quiz")
-                score = act_data.get("score", 0)
-                memory["quizzes"].append({"topic": topic, "score": score, "timestamp": time.time()})
+                score = float(act_data.get("score", 0))
+                vdb.db_log_quiz(email, topic, score)
                 if score >= 80:
                     state  = "dance"
-                    speech = f"Wow! {score}% on {topic}! You're amazing! 🎉"
-                    if topic not in memory.get("strengths", []):
-                        memory.setdefault("strengths", []).append(topic)
+                    speech = f"Wow! {score:.0f}% on {topic}! You're amazing! 🎉"
                 elif score < 50:
                     state  = "sad"
-                    speech = f"Got {score}% on {topic}. Let's review it together! 💪"
-                    if topic not in memory.get("weaknesses", []):
-                        memory.setdefault("weaknesses", []).append(topic)
+                    speech = f"Got {score:.0f}% on {topic}. Let's review it together! 💪"
                 else:
                     state  = "thinking"
-                    speech = f"{score}% on {topic}! Keep practising! 📚"
+                    speech = f"{score:.0f}% on {topic}! Keep practising! 📚"
 
             elif activity_type == "assignment":
                 title  = act_data.get("title", "Assignment")
                 status = act_data.get("status", "completed")
-                memory["assignments"].append({"title": title, "status": status, "timestamp": time.time()})
+                vdb.db_log_assignment(email, title, status)
                 if status in ("submitted", "completed"):
                     state  = "dance"
                     speech = f"Submitted '{title}'! Well done! 🌟"
@@ -714,7 +899,6 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                 state  = "sad"
                 speech = "Got a coding error? Let's debug it step by step! 🔧"
 
-            save_memory(memory)
             self._sig.record_activity.emit()
             if state != "idle":
                 self._sig.change_state.emit(state)
@@ -722,59 +906,155 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                 self._sig.show_speech.emit(speech)
                 self._sig.speak_text.emit(speech)
 
-            self._send_json({"ok": True, "state": state, "speech": speech})
+            # Broadcast via WebSocket
+            _ws_broadcaster.broadcast_json(
+                "activity",
+                activityType=activity_type,
+                state=state,
+                speech=speech,
+                userId=email
+            )
+
+            # Build Agent Decision payload
+            cfg  = load_config()
+            tone = cfg.get("personality_mode", "friendly")
+
+            custom_anim = None
+            if activity_type == "quiz":
+                score = float(act_data.get("score", 0))
+                custom_anim = "wave" if score >= 80 else ("shake" if score < 50 else None)
+            elif activity_type == "error":
+                custom_anim = "shake"
+            elif activity_type == "progress":
+                custom_anim = "nod"
+
+            if custom_anim:
+                self._sig.custom_animation.emit(custom_anim)
+
+            decision = {
+                "ok": True,
+                "state": state,
+                "speech": speech,
+                "message":  {"text": speech, "tone": tone},
+                "actions":  [],
+                "mascot":   {"state": state, "bubbleText": speech},
+            }
+            if custom_anim:
+                decision["mascot"]["customAnimation"] = custom_anim
+
+            is_decision_valid, dec_err = schema_validator.validate_agent_decision(decision)
+            if not is_decision_valid:
+                print(f"[Schema Warning] Produced invalid AgentDecision: {dec_err}")
+
+            self._send_json(decision)
         except Exception as e:
             self._send_json({"error": str(e)}, 500)
 
     # ── /api/chat ─────────────────────────────────────────────
     def _handle_chat(self):
         try:
-            req     = self._read_json()
-            message = req.get("message", "").strip()
-            email   = req.get("email")
+            req = self._read_json()
+
+            # New schema format
+            if "action" in req:
+                is_valid, err_msg = schema_validator.validate_lms_context(req)
+                if not is_valid:
+                    self._send_json({"error": f"Schema Validation Error: {err_msg}"}, 400)
+                    return
+                message = req.get("contextData", {}).get("chatMessageText", "").strip()
+                email   = req.get("userId")
+            else:
+                message = req.get("message", "").strip()
+                email   = req.get("email")
+
             if not message:
                 self._send_json({"error": "Empty message"}, 400)
                 return
 
-            memory = load_memory()
+            # Resolve user identity
             if email:
-                memory["email"] = email
-            uid = email or memory.get("email") or "anonymous"
+                set_current_email(email)
+            email  = get_current_email()
+            memory = load_memory(email)
 
             self._sig.change_state.emit("thinking")
             self._sig.show_speech.emit("Let me think about that... 🤔")
             self._sig.record_activity.emit()
 
+            # WebSocket: notify LMS that mascot is thinking
+            _ws_broadcaster.broadcast_json("stateChange", state="thinking", userId=email)
+
             system_prompt = build_system_prompt(memory)
-            cfg     = load_config()
-            api_key = cfg.get("gemini_api_key", "")
-            reply   = ""
+            cfg           = load_config()
+            api_key       = cfg.get("gemini_api_key", "")
+            reply         = ""
+            mascot_state  = "idle"
+            actions       = []
 
             if api_key:
                 result = call_gemini_direct(system_prompt, message, api_key)
                 if handle_gemini_result(result, self._sig):
-                    # It was a navigation — craft spoken reply
                     page  = result.get("args", {}).get("page", "ai_tutor")
                     reply = f"Navigating to {page.replace('_', ' ')} for you! 🚀"
+                    mascot_state = "dance"
+                    actions.append({"type": "navigate_to_page", "params": {"page": page}})
                 elif result["type"] == "text":
                     reply = result["text"]
                     self._sig.change_state.emit("idle")
+                    mascot_state = "idle"
                 elif result["type"] == "error":
                     reply = result["text"]
                     self._sig.change_state.emit("sad")
+                    mascot_state = "sad"
 
             if not reply:
-                reply = call_lms_server(system_prompt, message, uid)
+                reply = call_lms_server(system_prompt, message, email)
             if not reply:
                 reply = offline_reply(message)
                 self._sig.change_state.emit("idle")
+                mascot_state = "idle"
 
             teaser = reply[:220] + "..." if len(reply) > 220 else reply
             self._sig.show_speech.emit(teaser)
             self._sig.speak_text.emit(teaser)
             self._sig.save_chat.emit(message, reply)
 
-            self._send_json({"response": reply})
+            # Log chat to SQLite
+            vdb.db_log_chat(email, message, reply)
+
+            # WebSocket: push reply + final state
+            _ws_broadcaster.broadcast_json(
+                "chat", userId=email, state=mascot_state,
+                userMessage=message, reply=teaser
+            )
+
+            tone       = cfg.get("personality_mode", "friendly")
+            msg_lower  = message.lower()
+            custom_anim = None
+            if any(k in msg_lower for k in ("wave", "hi", "hello", "greet")):
+                custom_anim = "wave"
+            elif mascot_state == "sad":
+                custom_anim = "shake"
+            elif mascot_state == "dance":
+                custom_anim = "wave"
+
+            if custom_anim:
+                self._sig.custom_animation.emit(custom_anim)
+
+            decision = {
+                "response": reply,  # Legacy key
+                "message":  {"text": reply, "tone": tone},
+                "actions":  actions,
+                "mascot":   {"state": mascot_state, "bubbleText": teaser},
+            }
+            if custom_anim:
+                decision["mascot"]["customAnimation"] = custom_anim
+
+            is_decision_valid, dec_err = schema_validator.validate_agent_decision(decision)
+            if not is_decision_valid:
+                print(f"[Schema Warning] Produced invalid AgentDecision: {dec_err}")
+
+            self._send_json(decision)
         except Exception as e:
             self._send_json({"error": str(e)}, 500)
 
@@ -792,7 +1072,7 @@ class ServerThread(Thread):
 
     def run(self):
         try:
-            srv = DesktopServer(("localhost", self.port), CompanionRequestHandler, self.signals)
+            srv = DesktopServer(("127.0.0.1", self.port), CompanionRequestHandler, self.signals)
             print(f"Vedika API → http://localhost:{self.port}")
             srv.serve_forever()
         except Exception as e:
@@ -894,15 +1174,22 @@ class OnboardingWindow(QWidget):
                   (geo.height() - self.height()) // 2)
 
     def _on_title(self, title):
-        if title.startswith("__ONBOARD__"):
+        if title.startswith("__OPEN_URL__"):
+            url = title[len("__OPEN_URL__"):]
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+        elif title.startswith("__ONBOARD__"):
             import urllib.parse
             try:
                 raw  = urllib.parse.unquote(title[len("__ONBOARD__"):])
                 data = json.loads(raw)
-                memory = load_memory()
-                memory["user_name"] = (data.get("name") or "Student").strip()
-                memory["user_age"]  = int(data.get("age") or 16)
-                save_memory(memory)
+                email = data.get("userId") or get_current_email()
+                set_current_email(email)
+                name = (data.get("name") or "Student").strip()
+                age  = int(data.get("age") or 16)
+                vdb.db_set_profile(email, name, age)
                 cfg = load_config()
                 if data.get("apiKey"):
                     cfg["gemini_api_key"] = data["apiKey"].strip()
@@ -959,6 +1246,14 @@ class MascotWindow(QWidget):
         self.signals.speak_text.connect(self.tts.speak)
         self.signals.record_activity.connect(self._record_activity)
         self.signals.save_chat.connect(self._save_chat)
+        self.signals.custom_animation.connect(self._on_custom_animation)
+        # Wire state/speech changes → WebSocket broadcast
+        self.signals.change_state.connect(
+            lambda s: _ws_broadcaster.broadcast_json("stateChange", state=s)
+        )
+        self.signals.show_speech.connect(
+            lambda t: _ws_broadcaster.broadcast_json("speech", text=t)
+        )
 
         # Voice
         self.voice = VoiceListener(self.tts)
@@ -967,8 +1262,10 @@ class MascotWindow(QWidget):
         self.voice.listening_stopped.connect(self._on_listening_stop)
         self.voice.no_mic_signal.connect(self._on_no_mic)
 
-        # HTTP server
+        # HTTP server (port 7000)
         ServerThread(7000, self.signals).start()
+        # WebSocket server (port 7001)
+        _ws_broadcaster.start()
 
     # ─── System tray ─────────────────────────────────────────
     def _init_tray(self):
@@ -1005,11 +1302,11 @@ class MascotWindow(QWidget):
 
     # ─── Greeting ────────────────────────────────────────────
     def greet(self):
-        memory   = load_memory()
+        email    = get_current_email()
+        memory   = load_memory(email)
         name     = memory.get("user_name") or "there"
         sessions = memory.get("total_sessions", 0)
-        memory["total_sessions"] = sessions + 1
-        save_memory(memory)
+        vdb.db_increment_sessions(email)
 
         if sessions == 0:
             msg = f"Hi {name}! I'm Vedika, your AI companion! 🚀 Right-click me or tap the mic to talk!"
@@ -1038,6 +1335,7 @@ class MascotWindow(QWidget):
         self.tray.showMessage("Vedika is sleeping 💤",
                               "Click the tray or interact to wake her up!",
                               QSystemTrayIcon.Information, 6000)
+        _ws_broadcaster.broadcast_json("sleeping")
 
     def _on_wake_up(self):
         elapsed_min = max(0, int((time.time() - self.last_active) / 60))
@@ -1055,6 +1353,9 @@ class MascotWindow(QWidget):
         self.view.page().runJavaScript(f"setMascotState('{state}');")
         if state not in ("idle", "sleep", "wake"):
             self._state_reset_timer.start(8000)
+
+    def _on_custom_animation(self, anim: str):
+        self.view.page().runJavaScript(f"triggerCustomAnimation('{anim}');")
 
     def _on_show_speech(self, text: str):
         safe = text.replace("'", "\\'").replace("\n", " ")
@@ -1166,13 +1467,9 @@ class MascotWindow(QWidget):
         self.signals.save_chat.emit(message, reply)
 
     def _save_chat(self, user_msg: str, ai_reply: str):
-        memory = load_memory()
-        memory["chats"].append({
-            "user": user_msg, "companion": ai_reply, "timestamp": time.time()
-        })
-        if len(memory["chats"]) > 50:
-            memory["chats"] = memory["chats"][-50:]
-        save_memory(memory)
+        """Persist chat to SQLite (called via voice path; HTTP path saves directly)."""
+        email = get_current_email()
+        vdb.db_log_chat(email, user_msg, ai_reply)
 
     # ─── Context menu ─────────────────────────────────────────
     def contextMenuEvent(self, event):
@@ -1268,9 +1565,8 @@ class MascotWindow(QWidget):
         )
 
     def _quit(self):
-        memory = load_memory()
-        memory["last_session_end"] = time.time()
-        save_memory(memory)
+        email = get_current_email()
+        vdb.db_set_session_end(email)
         self.tts.stop()
         QApplication.quit()
 
@@ -1280,6 +1576,9 @@ class MascotWindow(QWidget):
 # ═══════════════════════════════════════════════════════════════
 
 def main():
+    # Initialize SQLite DB and migrate legacy JSON (runs once)
+    vdb.startup()
+
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
