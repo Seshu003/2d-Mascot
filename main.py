@@ -27,7 +27,7 @@ SLEEP_TIMEOUT = 5 * 60  # 5 minutes
 
 # ── Vyomantha LMS page URLs ──────────────────────────────────────
 PAGE_URLS = {
-    "ai_tutor":    "https://vyomantha-testing.vercel.app/ai-tutor",
+    "ai_tutor":    "https://vyomantha-testing.vercel.app/dashboard",
     "dashboard":   "https://vyomantha-testing.vercel.app/dashboard",
     "grades":      "https://vyomantha-testing.vercel.app/grades",
     "assignments": "https://vyomantha-testing.vercel.app/assignments",
@@ -37,8 +37,8 @@ PAGE_URLS = {
 }
 
 KNOWN_URLS = {
-    "ai tutor":    PAGE_URLS["ai_tutor"],
-    "tutor":       PAGE_URLS["ai_tutor"],
+    "ai tutor":    PAGE_URLS["dashboard"],
+    "tutor":       PAGE_URLS["dashboard"],
     "vyomantha":   PAGE_URLS["login"],
     "website":     PAGE_URLS["login"],
     "login":       PAGE_URLS["login"],
@@ -416,7 +416,9 @@ def handle_gemini_result(result: dict, signals, voice_mode: bool = False):
     """Dispatch a Gemini result dict — opens pages or emits text."""
     if result["type"] == "function_call":
         if result["name"] == "navigate_to_page":
-            page = result["args"].get("page", "ai_tutor")
+            page = result["args"].get("page", "dashboard")
+            if page == "ai_tutor":
+                page = "dashboard"
             url  = PAGE_URLS.get(page, PAGE_URLS["login"])
             webbrowser.open(url)
             label = page.replace("_", " ").title()
@@ -994,7 +996,9 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             if api_key:
                 result = call_gemini_direct(system_prompt, message, api_key)
                 if handle_gemini_result(result, self._sig):
-                    page  = result.get("args", {}).get("page", "ai_tutor")
+                    page  = result.get("args", {}).get("page", "dashboard")
+                    if page == "ai_tutor":
+                        page = "dashboard"
                     reply = f"Navigating to {page.replace('_', ' ')} for you! 🚀"
                     mascot_state = "dance"
                     actions.append({"type": "navigate_to_page", "params": {"page": page}})
