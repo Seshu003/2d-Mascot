@@ -368,9 +368,10 @@ def call_gemini_direct(system_prompt: str, user_message: str, api_key: str, use_
         return {"type": "error", "text": "google-genai not installed. Run: pip install google-genai"}
     except Exception as e:
         err = str(e)
-        print(f"Gemini direct error: {err}")
         if "RESOURCE_EXHAUSTED" in err or "429" in err:
+            print("[Gemini] API Key quota or rate limit exceeded. Falling back to offline/LMS replies.")
             return {"type": "error", "text": "Gemini API quota exceeded (Rate Limit / 429). Please wait a moment or check your Google AI Studio plan."}
+        print(f"Gemini direct error: {err}")
         if any(k in err for k in ("API_KEY", "api_key", "401", "403", "invalid", "PERMISSION_DENIED")):
             return {"type": "error", "text": "Invalid or missing Gemini API key. Please check your settings."}
         return {"type": "error", "text": err}
