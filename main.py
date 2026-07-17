@@ -326,7 +326,7 @@ def call_gemini_direct(system_prompt: str, user_message: str, api_key: str, use_
             config_kwargs["tools"] = [navigate_tool]
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-3.5-flash",
             contents=user_message,
             config=types.GenerateContentConfig(**config_kwargs),
         )
