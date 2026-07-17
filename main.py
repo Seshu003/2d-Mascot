@@ -256,9 +256,7 @@ def build_system_prompt(memory: dict, voice_mode: bool = False) -> str:
     quiz_str  = ", ".join(f"{q['topic']}: {q['score']}%" for q in quizzes[-5:]) or "None yet"
     prog_str  = ", ".join(f"Module {m}: Lesson {l}" for m, l in progress.items()) or "Just starting"
 
-    style = ("under 2 sentences, plain English, no markdown, no bullet points"
-             if voice_mode else
-             "concise (max 3 short paragraphs), use emojis where suitable")
+    style = "extremely brief (maximum 1 or 2 short sentences, 15-25 words max). Keep answers to one or two lines max! Do not write paragraphs."
 
     return (
         f"You are Vedika, a friendly 2D astronaut desktop companion and AI tutor for Vyomantha LMS.\n"
@@ -796,9 +794,16 @@ class MascotView(QWebEngineView):
         self.page().setBackgroundColor(Qt.transparent)
         self.page().titleChanged.connect(self._on_title)
 
-        # Install event filter to capture clicks/drags before chromium handles them
+        # Hook load finished to install event filter on the final focusProxy
+        self.loadFinished.connect(self._on_load_finished)
+        self._install_filter()
+
+    def _install_filter(self):
         if self.focusProxy():
             self.focusProxy().installEventFilter(self)
+
+    def _on_load_finished(self, ok):
+        self._install_filter()
 
     def _on_title(self, title):
         if title == "__CMD__listen" and self.parent_widget:
