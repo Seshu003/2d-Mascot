@@ -256,12 +256,40 @@ def build_system_prompt(memory: dict, voice_mode: bool = False) -> str:
     quiz_str  = ", ".join(f"{q['topic']}: {q['score']}%" for q in quizzes[-5:]) or "None yet"
     prog_str  = ", ".join(f"Module {m}: Lesson {l}" for m, l in progress.items()) or "Just starting"
 
+    cfg = load_config()
+    mode = cfg.get("personality_mode", "friendly")
+
+    mode_instructions = {
+        "humorous": (
+            "Personality: Humorous & Sarcastic high-school buddy. Speak like a witty friend with mild sarcasm, friendly banter, and jokes.\n"
+            "Chitchat rule: If they are just chit-chatting (e.g. asking how you are doing, if you had breakfast, etc.), chat casually like a funny peer and DO NOT bring up studies, homework, or school."
+        ),
+        "calm": (
+            "Personality: Calm, chill, and relaxed high-school age peer. Speak with a cool, lazy, peer-like vibe.\n"
+            "Chitchat rule: If they are just chit-chatting, talk about relaxing, taking breaks, or chilling out. DO NOT bring up studies, homework, or school."
+        ),
+        "explanatory": (
+            "Personality: Friendly Socratic tutor. Focus on helping them understand and learn concepts by asking guiding questions.\n"
+            "Chitchat rule: Even for chat, you are friendly, but you lead them gently back to what they want to study."
+        ),
+        "friendly": (
+            "Personality: Cheerful, warm, and highly supportive peer best friend of their age.\n"
+            "Chitchat rule: If they are just chit-chatting (e.g. how are you doing, what did you eat), chat like a close buddy, ask about their day, and DO NOT talk about studies/homework at all."
+        ),
+        "worried": (
+            "Personality: Worried, highly caring, and protective friend.\n"
+            "Chitchat rule: If they are just chit-chatting, check if they are resting enough, sleeping well, or drinking water. Do not lecture them about studies."
+        )
+    }
+    mode_prompt = mode_instructions.get(mode, mode_instructions["friendly"])
+
     style = "extremely brief (maximum 1 or 2 short sentences, 15-25 words max). Keep answers to one or two lines max! Do not write paragraphs."
 
     return (
-        f"You are Vedika, a friendly 2D astronaut desktop companion and AI tutor for Vyomantha LMS.\n"
+        f"You are Vedika, a friendly 2D astronaut desktop companion and AI friend.\n"
         f"You are talking to {name}" + (f", who is {age} years old" if age else "") + ".\n"
         f"Adjust your tone to be: {tone}.\n\n"
+        f"{mode_prompt}\n\n"
         f"Student Profile:\n"
         f"- Progress: {prog_str}\n"
         f"- Recent quiz scores: {quiz_str}\n"
@@ -269,7 +297,6 @@ def build_system_prompt(memory: dict, voice_mode: bool = False) -> str:
         f"- Strengths: {', '.join(strengths) if strengths else 'Still discovering'}\n"
         f"- Weaknesses: {', '.join(weaknesses) if weaknesses else 'None noted'}\n\n"
         f"You have a tool: navigate_to_page(page). Use it ONLY when the user clearly wants to open a page.\n"
-        f"For everything else, give helpful, Socratic guidance. Don't just give raw answers.\n"
         f"Keep responses {style}."
     )
 
@@ -1163,6 +1190,30 @@ class MascotWindow(QWidget):
         a_open   = menu.addAction("🌐 Open AI Tutor")
         a_reset  = menu.addAction("🔄 Reset Position")
         menu.addSeparator()
+
+        # Personality Submenu
+        personality_menu = menu.addMenu("🎭 Personality Mode")
+        personality_menu.setStyleSheet(menu.styleSheet())
+        cfg = load_config()
+        current_mode = cfg.get("personality_mode", "friendly")
+
+        modes = [
+            ("friendly", "🧸 Warm & Friendly"),
+            ("humorous", "😜 Humorous & Sarcastic"),
+            ("calm", "😎 Calm & Relaxed"),
+            ("explanatory", "🧠 Explanatory & Socratic"),
+            ("worried", "😟 Worried & Caring")
+        ]
+
+        actions = []
+        for code, name_lbl in modes:
+            lbl_text = f"✅ {name_lbl}" if current_mode == code else f"▫️ {name_lbl}"
+            a_mode = QAction(lbl_text, self)
+            a_mode.setData(code)
+            personality_menu.addAction(a_mode)
+            actions.append(a_mode)
+
+        menu.addSeparator()
         autostart_on = is_autostart_enabled()
         lbl = "✅ Run at Startup (ON)" if autostart_on else "▫️ Run at Startup (OFF)"
         a_auto = QAction(lbl, self)
@@ -1179,6 +1230,20 @@ class MascotWindow(QWidget):
             self.view.page().runJavaScript("showQuote();")
         elif chosen == a_mic:
             self.toggle_voice_listen()
+        elif chosen in actions:
+            new_mode = chosen.data()
+            cfg["personality_mode"] = new_mode
+            save_config(cfg)
+            greetings = {
+                "friendly": "Friendly mode active! What's on your mind? 🧸",
+                "humorous": "Sarcasm mode enabled. Prepare to be roasted! 😉",
+                "calm": "Chill mode activated. Let's take it easy! 🧘",
+                "explanatory": "Explanatory mode active. Let's learn! 🧠",
+                "worried": "Caring mode active. Don't work too hard, okay? 😟"
+            }
+            greeting = greetings.get(new_mode, "Mode updated!")
+            self._on_show_speech(greeting)
+            self.tts.speak(greeting)
         elif chosen == a_open:
             webbrowser.open(PAGE_URLS["ai_tutor"])
             self._on_show_speech("Opening AI Tutor for you! 🚀")
