@@ -952,6 +952,76 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json({"error": str(e)}, 500)
 
+def match_local_navigation(message: str) -> str:
+    """
+    Check if the user message is a simple navigation command.
+    Returns the resolved page name (e.g. 'dashboard', 'courses', 'progress', etc.) or None.
+    """
+    msg = message.lower().strip()
+    
+    # Remove common command prefixes
+    for prefix in ["open ", "go to ", "take me to ", "show ", "navigate to "]:
+        if msg.startswith(prefix):
+            msg = msg[len(prefix):].strip()
+            break
+            
+    # Clean trailing punctuation and spaces
+    msg = msg.rstrip(".!? ")
+    
+    # Map spoken names to structural page identifiers
+    mappings = {
+        "dashboard": "dashboard",
+        "courses": "courses",
+        "course": "courses",
+        "quiz": "quizzes",
+        "quizzes": "quizzes",
+        "assignment": "assignments",
+        "assignments": "assignments",
+        "resource": "resources",
+        "resources": "resources",
+        "ask ai": "general-tutor",
+        "general tutor": "general-tutor",
+        "ask tutor": "general-tutor",
+        "ask your ai tutor": "general-tutor",
+        "ask your ai": "general-tutor",
+        "tutor": "dashboard",  # map generic tutor requests to dashboard fallback
+        "ai tutor": "dashboard",
+        "tutotr": "dashboard",  # handle student spelling typos
+        "code tutor": "coding-tutor",
+        "code with ai tutor": "coding-tutor",
+        "coding tutor": "coding-tutor",
+        "code puzzle": "code-puzzle",
+        "puzzle": "code-puzzle",
+        "jobs": "jobs",
+        "job": "jobs",
+        "progress": "progress",
+        "grade": "grades",
+        "grades": "grades",
+        "physics": "physics-lab",
+        "physics lab": "physics-lab",
+        "chemistry": "chemistry-lab",
+        "chemistry lab": "chemistry-lab",
+        "biology": "biology-lab",
+        "biology lab": "biology-lab",
+        "lab": "vedika-labs",
+        "labs": "vedika-labs",
+        "profile": "profile",
+        "login": "login",
+        "home": "home"
+    }
+    
+    # Check direct match
+    if msg in mappings:
+        return mappings[msg]
+        
+    # Check partial match (e.g. "open the dashboard" -> matches "dashboard")
+    for keyword, page in mappings.items():
+        if keyword in msg:
+            return page
+            
+    return None
+
+
     # ── /api/chat ─────────────────────────────────────────────
     def _handle_chat(self):
         try:
@@ -978,6 +1048,51 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                 set_current_email(email)
             email  = get_current_email()
             memory = load_memory(email)
+
+            # Local Navigation Command Matcher (prevents API calls & handles rate limits)
+            local_page = match_local_navigation(message)
+            if local_page:
+                url = PAGE_URLS.get(local_page)
+                if not url:
+                    sub_page_urls = {
+                        "general-tutor": "https://vyomantha-testing.vercel.app/vedika-ai/general-tutor",
+                        "coding-tutor":  "https://vyomantha-testing.vercel.app/vedika-ai/coding-tutor",
+                        "code-puzzle":   "https://vyomantha-testing.vercel.app/vedika-ai/code-puzzle",
+                        "physics-lab":   "https://vyomantha-testing.vercel.app/labs/physics",
+                        "chemistry-lab": "https://vyomantha-testing.vercel.app/labs/chemistry",
+                        "biology-lab":   "https://vyomantha-testing.vercel.app/labs/biology",
+                        "vedika-labs":   "https://vyomantha-testing.vercel.app/vedika-labs",
+                        "quizzes":       "https://vyomantha-testing.vercel.app/courses?tab=quizzes",
+                    }
+                    url = sub_page_urls.get(local_page, PAGE_URLS["dashboard"])
+
+                webbrowser.open(url)
+                label = local_page.replace("-", " ").replace("_", " ").title()
+                reply = f"Opening {label} for you! 🚀"
+                
+                self._sig.change_state.emit("dance")
+                self._sig.show_speech.emit(reply)
+                self._sig.speak_text.emit(f"Opening {label} for you!")
+                self._sig.save_chat.emit(message, reply)
+
+                # Broadcast WebSocket navigation event
+                _AI_TUTOR_TABS = {"general-tutor", "coding-tutor", "code-puzzle", "vedika-ai"}
+                if local_page in _AI_TUTOR_TABS:
+                    _ws_broadcaster.broadcast_json("openAITutor", tab=local_page, userId=email)
+                else:
+                    _ws_broadcaster.broadcast_json("navigate", page=local_page, userId=email)
+
+                # Log chat locally
+                vdb.db_log_chat(email, message, reply)
+
+                # Return response matching Schema
+                self._send_json({
+                    "response": reply,
+                    "message":  {"text": reply, "tone": "friendly"},
+                    "actions":  [{"type": "navigate_to_page", "params": {"page": local_page}}],
+                    "mascot":   {"state": "dance", "bubbleText": reply}
+                })
+                return
 
             self._sig.change_state.emit("thinking")
             self._sig.show_speech.emit("Let me think about that... 🤔")
@@ -1017,9 +1132,8 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                     self._sig.change_state.emit("idle")
                     mascot_state = "idle"
                 elif result["type"] == "error":
-                    reply = result["text"]
-                    self._sig.change_state.emit("sad")
-                    mascot_state = "sad"
+                    print(f"[Gemini Error fallback] {result['text']}")
+                    reply = ""
 
             if not reply:
                 reply = call_lms_server(system_prompt, message, email)
