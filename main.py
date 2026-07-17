@@ -27,8 +27,8 @@ SLEEP_TIMEOUT = 5 * 60  # 5 minutes
 
 # ── Vyomantha LMS page URLs ──────────────────────────────────────
 PAGE_URLS = {
-    "ai_tutor":    "https://vyomantha-testing.vercel.app/dashboard",
-    "dashboard":   "https://vyomantha-testing.vercel.app/dashboard",
+    "ai_tutor":    "https://vyomantha-testing.vercel.app/",
+    "dashboard":   "https://vyomantha-testing.vercel.app/",
     "grades":      "https://vyomantha-testing.vercel.app/grades",
     "assignments": "https://vyomantha-testing.vercel.app/assignments",
     "profile":     "https://vyomantha-testing.vercel.app/profile",
