@@ -6,7 +6,7 @@ import platform
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
-from PyQt5.QtCore import Qt, QUrl, pyqtSignal, QObject, QTimer
+from PyQt5.QtCore import Qt, QUrl, pyqtSignal, QObject, QTimer, QEvent
 from PyQt5.QtWidgets import (QApplication, QWidget, QMenu, QDesktopWidget,
                              QVBoxLayout, QAction, QSystemTrayIcon)
 from PyQt5.QtGui import QIcon
@@ -102,13 +102,18 @@ def load_env():
 
 def load_config():
     load_env()
-    cfg = {"gemini_api_key": os.environ.get("GEMINI_API_KEY", "").strip()}
+    cfg = {}
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 cfg.update(json.load(f))
         except Exception:
             pass
+    env_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if env_key:
+        cfg["gemini_api_key"] = env_key
+    elif not cfg.get("gemini_api_key"):
+        cfg["gemini_api_key"] = ""
     return cfg
 
 def save_config(cfg):
@@ -774,52 +779,56 @@ class ServerThread(Thread):
 # ═══════════════════════════════════════════════════════════════
 
 class MascotView(QWebEngineView):
-    """WebEngineView with improved drag-to-move.
+    """WebEngineView with robust eventFilter drag-to-move.
 
-    Uses a 6-pixel threshold to distinguish a real drag from a click:
-    - below threshold → pass events to WebEngine normally (spin, etc.)
-    - above threshold → move the parent window, suppress WebEngine
+    Intercepts mouse events on the focusProxy focus widget before
+    they are swallowed by chromium.
     """
     _DRAG_THRESHOLD = 6  # px before a move is considered a drag
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_widget = parent
-        self._press_global = None   # global pos at mouse-down
-        self._drag_origin  = None   # offset for window move
-        self._is_dragging  = False  # threshold crossed?
+        self._press_global = None
+        self._drag_origin  = None
+        self._is_dragging  = False
         self.setStyleSheet("background: transparent;")
         self.page().setBackgroundColor(Qt.transparent)
         self.page().titleChanged.connect(self._on_title)
+
+        # Install event filter to capture clicks/drags before chromium handles them
+        if self.focusProxy():
+            self.focusProxy().installEventFilter(self)
 
     def _on_title(self, title):
         if title == "__CMD__listen" and self.parent_widget:
             self.parent_widget.toggle_voice_listen()
             self.page().runJavaScript("document.title = 'Vedika 2D Mascot';")
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self._press_global = event.globalPos()
-            self._drag_origin  = (event.globalPos()
-                                  - self.parent_widget.frameGeometry().topLeft())
-            self._is_dragging  = False
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.LeftButton and self._drag_origin is not None:
-            delta = (event.globalPos() - self._press_global).manhattanLength()
-            if delta >= self._DRAG_THRESHOLD:
-                self._is_dragging = True
-            if self._is_dragging:
-                self.parent_widget.move(event.globalPos() - self._drag_origin)
-                return          # don't let WebEngine process drag-moves
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        self._press_global = None
-        self._drag_origin  = None
-        self._is_dragging  = False
-        super().mouseReleaseEvent(event)
+    def eventFilter(self, obj, event):
+        if obj == self.focusProxy():
+            if event.type() == QEvent.MouseButtonPress:
+                if event.button() == Qt.LeftButton:
+                    self._press_global = event.globalPos()
+                    self._drag_origin  = (event.globalPos()
+                                          - self.parent_widget.frameGeometry().topLeft())
+                    self._is_dragging  = False
+            elif event.type() == QEvent.MouseMove:
+                if event.buttons() == Qt.LeftButton and self._drag_origin is not None:
+                    delta = (event.globalPos() - self._press_global).manhattanLength()
+                    if delta >= self._DRAG_THRESHOLD:
+                        self._is_dragging = True
+                    if self._is_dragging:
+                        self.parent_widget.move(event.globalPos() - self._drag_origin)
+                        return True  # Swallow: don't let chromium see drag movements
+            elif event.type() == QEvent.MouseButtonRelease:
+                was_dragging = self._is_dragging
+                self._press_global = None
+                self._drag_origin  = None
+                self._is_dragging  = False
+                if was_dragging:
+                    return True  # Swallow: prevent dragging from triggering page clicks
+        return super().eventFilter(obj, event)
 
 
 # ═══════════════════════════════════════════════════════════════
